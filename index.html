@@ -1325,7 +1325,15 @@
         إرسال الرسالة
         <i class="fas fa-paper-plane" style="font-size: 0.85rem;"></i>
     </button>
-
+<!-- صندوق الوارد الخاص بالزير/المستخدم -->
+<section id="userInboxSection" style="padding: 60px 24px; background: var(--bg-light);">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 20px; color: var(--accent);">رسائلي وردود الإدارة</h2>
+        <div id="userInbox">
+            <p style="color: var(--fg-muted);">سجّل الدخول لعرض رسائلك والردود عليها.</p>
+        </div>
+    </div>
+</section>
 </form>
 
 </div>
@@ -1409,7 +1417,7 @@
 
 <!-- Main JavaScript -->
 <script>
-    // ==========================================
+// ==========================================
 // 1. SUPABASE SETUP
 // ==========================================
 const SUPABASE_URL = 'https://kcqayofeqwtslifowzoe.supabase.co';
@@ -1516,8 +1524,13 @@ async function updateAuthButton(currentUser) {
 
     if (!user) {
         if (dashboard) dashboard.style.display = 'none';
+        const inbox = document.getElementById('userInbox');
+        if (inbox) inbox.innerHTML = '<p style="color: var(--fg-muted);">سجّل الدخول لعرض رسائلك والردود عليها.</p>';
         return;
     }
+
+    // تحديث صندوق الوارد للزائر المسجل
+    await loadUserMessagesAndReplies();
 
     const { data: profile } = await supabaseClient
         .from('profiles')
@@ -1580,10 +1593,73 @@ async function handleSubmit(e) {
 
     showToast('تم إرسال رسالتك بنجاح. شكراً لتواصلك!');
     e.target.reset();
+    await loadUserMessagesAndReplies(); // تحديث صندوق الوارد فوراً
 }
 
 // ==========================================
-// 4. ADMIN MESSAGES & REPLIES
+// 4. USER INBOX (MESSAGES & REPLIES)
+// ==========================================
+async function loadUserMessagesAndReplies() {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    const inboxContainer = document.getElementById('userInbox');
+    if (!inboxContainer) return;
+
+    if (!user) {
+        inboxContainer.innerHTML = '<p style="color: var(--fg-muted);">سجّل الدخول لعرض رسائلك والردود عليها.</p>';
+        return;
+    }
+
+    const { data: messages, error } = await supabaseClient
+        .from('messages')
+        .select(`
+            *,
+            replies (*)
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        inboxContainer.innerHTML = '<p style="color: red;">خطأ في جلب الرسائل.</p>';
+        return;
+    }
+
+    inboxContainer.replaceChildren();
+    if (!messages || messages.length === 0) {
+        inboxContainer.innerHTML = '<p style="color: var(--fg-muted);">ليس لديك رسائل سابقة.</p>';
+        return;
+    }
+
+    messages.forEach(msg => {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'branch-card';
+        msgDiv.style.marginBottom = '15px';
+        
+        let repliesHtml = '';
+        if (msg.replies && msg.replies.length > 0) {
+            msg.replies.forEach(rep => {
+                repliesHtml += `
+                    <div style="background: rgba(201, 168, 76, 0.1); border-right: 3px solid var(--accent); padding: 10px; margin-top: 10px; border-radius: 6px;">
+                        <p style="font-size: 0.9rem; color: var(--accent); font-weight: bold;">رد الإدارة:</p>
+                        <p style="font-size: 0.95rem; margin-top: 4px;">${rep.body}</p>
+                    </div>
+                `;
+            });
+        } else {
+            repliesHtml = '<p style="font-size: 0.85rem; color: var(--fg-muted); margin-top: 10px;">جاري مراجعة الرسالة من قبل الإدارة...</p>';
+        }
+
+        msgDiv.innerHTML = `
+            <h4 style="font-weight: 700; color: var(--fg);">الموضوع: ${msg.subject}</h4>
+            <p style="color: var(--fg-muted); font-size: 0.9rem; margin: 5px 0;">رسالتك: ${msg.message}</p>
+            <hr style="border-color: var(--border); margin: 10px 0;">
+            ${repliesHtml}
+        `;
+        inboxContainer.appendChild(msgDiv);
+    });
+}
+
+// ==========================================
+// 5. ADMIN DASHBOARD & REPLIES
 // ==========================================
 let selectedMessageId = null;
 
@@ -1664,7 +1740,7 @@ async function sendAdminReply() {
 }
 
 // ==========================================
-// 5. GENERAL UI EFFECTS & TOAST
+// 6. GENERAL UI EFFECTS & TOAST
 // ==========================================
 function showToast(message) {
     const toast = document.getElementById('toast');
